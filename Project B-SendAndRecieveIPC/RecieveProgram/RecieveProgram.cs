@@ -9,7 +9,6 @@ namespace ReceiverProgram
         static void Main(string[] args)
         {
             Console.WriteLine("Waiting for input from Send program...");
-            Console.WriteLine("(Press Ctrl+C to exit)");
 
             try
             {
@@ -58,15 +57,6 @@ namespace ReceiverProgram
                                         }
                                     }
                                     
-                                    // Check if we completed successfully
-                                    if (pipeServer.IsConnected)
-                                    {
-                                        Console.WriteLine("All words received successfully!");
-                                    }
-                                    else
-                                    {
-                                        Console.WriteLine("Communication ended prematurely.");
-                                    }
                                 }
                                 else
                                 {
