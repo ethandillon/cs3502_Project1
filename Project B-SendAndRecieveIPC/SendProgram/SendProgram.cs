@@ -74,7 +74,7 @@ namespace SenderProgram
                 {
                     Console.WriteLine($"ERROR: {e.Message}");
                     Console.WriteLine($"Exception type: {e.GetType().Name}");
-                    if (ex.InnerException != null)
+                    if (e.InnerException != null)
                     {
                         Console.WriteLine($"Inner exception: {e.InnerException.Message}");
                     }
