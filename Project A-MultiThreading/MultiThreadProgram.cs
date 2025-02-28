@@ -31,7 +31,7 @@ public class BankAccount{
             if (balance >= amount) balance -= amount;
         }
     }
-    //This method transfers money between two accounts but does it in such a way that the lock is disabled on the account, allowing for a lockout
+    //This method transfers money between two accounts but does it in such a way that allows for a lockout
     public static bool TransferUnsafe(BankAccount fromAccount, BankAccount toAccount, decimal amount, CancellationToken cancellationToken)
 {
     Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} attempting to lock Account {fromAccount.AccountId} for ${amount} transfer");
@@ -98,28 +98,43 @@ public class BankAccount{
 
     public static bool TransferSafe(BankAccount fromAccount, BankAccount toAccount, decimal amount)
     {
+        if (amount <= 0)
+        {
+            Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId}: Invalid transfer amount ${amount}");
+            return false;
+        }
+
         // Always locks accounts in a consistent order to prevent deadlocks
         var firstAccount = fromAccount.AccountId < toAccount.AccountId ? fromAccount : toAccount;
         var secondAccount = fromAccount.AccountId < toAccount.AccountId ? toAccount : fromAccount;
         
+        bool success = false;
+        
         Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} safely locking Account {firstAccount.AccountId} first for ${amount} transfer");
+        
         //locking first account first
         lock (firstAccount.balanceLock)
         {
             Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} safely locking Account {secondAccount.AccountId} second for ${amount} transfer");
+            
             //then locking second account
             lock (secondAccount.balanceLock)
             {
                 // If we're locking accounts in reverse order fromAccount what we need, we need to swap the operation
-                if (firstAccount.AccountId == fromAccount.AccountId)
+                if (firstAccount == fromAccount)
                 {
                     //if there is enough money in the bank account to make the transaction, then the transfer can be completed
                     if (fromAccount.balance >= amount)
                     {
                         fromAccount.balance -= amount;
                         toAccount.balance += amount;
+                        success = true;
                         Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} successfully transferred ${amount} from Account {fromAccount.AccountId} to Account {toAccount.AccountId}");
-                        return true;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId}: Insufficient funds " +
+                                        $"in Account {fromAccount.AccountId} (${fromAccount.balance} < ${amount})");
                     }
                 }
                 //swaps the opposite way if the accounts are in wrong order
@@ -129,15 +144,25 @@ public class BankAccount{
                     {
                         toAccount.balance -= amount;
                         fromAccount.balance += amount;
+                        success = true;
                         Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} successfully transferred ${amount} from Account {toAccount.AccountId} to Account {fromAccount.AccountId}");
-                        return true;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId}: Insufficient funds " +
+                                        $"in Account {toAccount.AccountId} (${toAccount.balance} < ${amount})");
                     }
                 }
+                
                 //if it gets to this point then there was not enough money in the accounts to complete the transaction
-                Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} failed to transfer ${amount} due to insufficient funds");
-                return false;
+                if (!success)
+                {
+                    Console.WriteLine($"Thread {Thread.CurrentThread.ManagedThreadId} failed to transfer ${amount} due to insufficient funds");
+                }
             }
         }
+        
+        return success;
     }
     public decimal GetBalance() => balance;
 }
@@ -151,7 +176,6 @@ class BankingSystemDemo {
         {
             var accounts = new List<BankAccount>();
             Console.WriteLine("Bank Account Setup");
-            Console.WriteLine("------------------");
 
             // Account 1
             Console.Write("Enter initial balance for Account 1: $");
@@ -315,28 +339,36 @@ class BankingSystemDemo {
 
             
             // Phase 4: Deadlock Resolution
-            Console.WriteLine("\nPhase 4: Deadlock Resolution");
-            Console.WriteLine("Safe Transfer Demonstration:");
-            Console.WriteLine($"Account {accounts[0].AccountId} balance: ${accounts[0].GetBalance()}");
-            Console.WriteLine($"Account {accounts[1].AccountId} balance: ${accounts[1].GetBalance()}");
-            
-            var safeThread1 = new Thread(() => {
-                bool result = BankAccount.TransferSafe(accounts[0], accounts[1], transferAmount1);
-                Console.WriteLine($"Safe transfer 1 result: {result}");
-            });
-            
-            var safeThread2 = new Thread(() => {
-                bool result = BankAccount.TransferSafe(accounts[1], accounts[0], transferAmount2);
-                Console.WriteLine($"Safe transfer 2 result: {result}");
-            });
-            
-            safeThread1.Start();
-            safeThread2.Start();
-            
-            // These should complete without deadlock
-            safeThread1.Join();
-            safeThread2.Join();
-            
+        Console.WriteLine("\nPhase 4: Deadlock Resolution");
+        Console.WriteLine("Safe Transfer Demonstration:");
+        Console.WriteLine($"Account {accounts[0].AccountId} balance: ${accounts[0].GetBalance()}");
+        Console.WriteLine($"Account {accounts[1].AccountId} balance: ${accounts[1].GetBalance()}");
+
+        bool safeResult1 = false;
+        bool safeResult2 = false;
+
+        var safeThread1 = new Thread(() => {
+            safeResult1 = BankAccount.TransferSafe(accounts[0], accounts[1], transferAmount1);
+            Console.WriteLine($"Safe transfer 1 result: {safeResult1}");
+        });
+
+        var safeThread2 = new Thread(() => {
+            safeResult2 = BankAccount.TransferSafe(accounts[1], accounts[0], transferAmount2);
+            Console.WriteLine($"Safe transfer 2 result: {safeResult2}");
+        });
+
+        safeThread1.Start();
+        safeThread2.Start();
+
+        // These should complete without deadlock
+        if (!safeThread1.Join(5000) || !safeThread2.Join(5000))
+        {
+            Console.WriteLine("WARNING: Possible deadlock detected in safe transfer");
+        }
+        else
+        {
+            Console.WriteLine("Both threads completed successfully");
+        }            
             Console.WriteLine("\nFinal Balances:");
             Console.WriteLine($"Account {accounts[0].AccountId}: ${accounts[0].GetBalance()}");
             Console.WriteLine($"Account {accounts[1].AccountId}: ${accounts[1].GetBalance()}");
