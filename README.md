@@ -1,4 +1,4 @@
-
+CS3502 Project 1
 Quick Start Guide:
 1. Clone git respository using the following command in a bash terminal:
 git clone https://github.com/yourusername/your-repo-name.git
